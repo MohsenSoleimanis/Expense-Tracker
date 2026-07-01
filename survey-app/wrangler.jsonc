@@ -1,0 +1,13 @@
+{
+  // Deploys the built static site (dist/) as a Cloudflare Worker with Static Assets.
+  // This makes `wrangler deploy` work for a plain Vite SPA WITHOUT requiring Vite >= 6
+  // or the @cloudflare/vite-plugin. No server-side Worker code is used — the app talks
+  // to Supabase directly from the browser.
+  "name": "expense-tracker",
+  "compatibility_date": "2026-05-01",
+  "assets": {
+    "directory": "./dist",
+    // Serve index.html for unknown paths so client-side routing/refresh works.
+    "not_found_handling": "single-page-application"
+  }
+}
