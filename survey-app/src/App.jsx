@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { survey } from './data/survey.js'
 import Question from './components/Question.jsx'
-import { submitResponse, isConfigured } from './lib/supabase.js'
+import { submitResponse } from './lib/supabase.js'
 
 export default function App() {
   const [status, setStatus] = useState('intro') // intro | form | submitting | done | error
@@ -10,7 +10,6 @@ export default function App() {
   const [others, setOthers] = useState({})
   const [errorMsg, setErrorMsg] = useState('')
 
-  // Sections/questions can be hidden based on earlier answers.
   const visibleSections = useMemo(
     () => survey.sections.filter((s) => !s.showIf || s.showIf(responses)),
     [responses]
@@ -21,20 +20,20 @@ export default function App() {
     ? section.questions.filter((q) => !q.showIf || q.showIf(responses))
     : []
   const isLast = safeStep === visibleSections.length - 1
+  const onForm = status === 'form' || status === 'submitting' || status === 'error'
 
   const setAnswer = (id, val) => setResponses((r) => ({ ...r, [id]: val }))
   const setOther = (id, val) => setOthers((o) => ({ ...o, [id]: val }))
+  const go = (n) => { setStep(n); scrollTop() }
+  const scrollTop = () => window.scrollTo({ top: 0, behavior: 'smooth' })
 
   async function handleSubmit() {
     setStatus('submitting')
     setErrorMsg('')
-
-    // Merge "Other" free-text into the answers payload.
     const answers = { ...responses }
     for (const [id, txt] of Object.entries(others)) {
       if (txt && txt.trim()) answers[`${id}_other`] = txt.trim()
     }
-
     let meta = {}
     try {
       meta = {
@@ -43,117 +42,154 @@ export default function App() {
         language: navigator.language,
         screen: `${window.screen?.width}x${window.screen?.height}`,
       }
-    } catch {
-      /* meta is best-effort */
-    }
+    } catch { /* best-effort */ }
 
     try {
       await submitResponse(answers, meta)
       setStatus('done')
+      scrollTop()
     } catch (e) {
       setErrorMsg(e.message || 'Something went wrong. Please try again.')
       setStatus('error')
     }
   }
 
-  // ---------- Screens ----------
-  if (status === 'intro') {
-    return (
-      <Shell>
-        <div className="card intro">
-          <h1>{survey.title}</h1>
-          <p className="lede">{survey.intro}</p>
-          {!isConfigured && (
-            <p className="warn">
-              ⚠ Supabase isn’t configured yet — copy <code>.env.example</code> to{' '}
-              <code>.env</code> and add your project URL + anon key before collecting real
-              responses.
-            </p>
-          )}
-          <button className="primary" onClick={() => setStatus('form')}>
-            Start →
-          </button>
-          <p className="tiny">Anonymous · ~5 minutes · skip anything you like</p>
-        </div>
-      </Shell>
-    )
-  }
-
-  if (status === 'done') {
-    return (
-      <Shell>
-        <div className="card done">
-          <div className="check">✓</div>
-          <h1>Thank you!</h1>
-          <p className="lede">Your answers were saved anonymously. This really helps.</p>
-        </div>
-      </Shell>
-    )
-  }
-
-  const submitting = status === 'submitting'
+  const headline = status === 'done'
+    ? 'Thank you.'
+    : 'Help shape a calmer way to handle money.'
+  const sub = status === 'done'
+    ? 'Your answers were saved anonymously.'
+    : 'A short, anonymous study on how people really keep track of their spending.'
 
   return (
-    <Shell>
-      <div className="progress">
-        <div
-          className="bar"
-          style={{ width: `${((safeStep + 1) / visibleSections.length) * 100}%` }}
-        />
-      </div>
-      <p className="step-count">
-        Step {safeStep + 1} of {visibleSections.length}
-      </p>
+    <div className="app">
+      <aside className="brand">
+        <div className="brand__inner">
+          <div className="brand__logo">
+            <span className="brand__mark">◎</span> Spending&nbsp;Study
+          </div>
 
-      <div className="card">
-        <h2 className="section-title">{section.title}</h2>
+          <div className="brand__body">
+            <h1 className="brand__headline">{headline}</h1>
+            <p className="brand__sub">{sub}</p>
+          </div>
 
-        {visibleQuestions.map((q) => (
-          <Question
-            key={q.id}
-            q={q}
-            value={responses[q.id]}
-            otherValue={others[q.id]}
-            onChange={(val) => setAnswer(q.id, val)}
-            onOther={(val) => setOther(q.id, val)}
-            likertAnchors={survey.likertAnchors}
-          />
-        ))}
+          <div className="brand__foot">
+            {onForm && (
+              <div className="progress">
+                <div className="progress__label">
+                  <span>{section.title}</span>
+                  <span>{safeStep + 1} / {visibleSections.length}</span>
+                </div>
+                <div className="progress__track">
+                  <div
+                    className="progress__bar"
+                    style={{ width: `${((safeStep + 1) / visibleSections.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            {status === 'intro' && (
+              <div className="chips">
+                <span className="chip">◷ ~5 minutes</span>
+                <span className="chip">🔒 Anonymous</span>
+                <span className="chip">✎ Skip anything</span>
+              </div>
+            )}
+          </div>
 
-        {status === 'error' && (
-          <p className="error">⚠ {errorMsg}</p>
-        )}
+          <div className="brand__glow" aria-hidden="true" />
+        </div>
+      </aside>
 
-        <div className="nav">
-          <button
-            className="ghost"
-            disabled={safeStep === 0 || submitting}
-            onClick={() => setStep(safeStep - 1)}
-          >
-            ← Back
-          </button>
+      <main className="panel">
+        <div className="panel__inner">
+          {status === 'intro' && (
+            <section className="intro step" key="intro">
+              <p className="intro__eyebrow">Spending habits research</p>
+              <h2 className="intro__title">{survey.title}</h2>
+              <p className="intro__text">{survey.intro}</p>
+              <div className="actions actions--start">
+                <button className="btn btn--primary" onClick={() => { setStatus('form'); scrollTop() }}>
+                  Start survey <ArrowR />
+                </button>
+              </div>
+              <p className="fineprint">No sign-up · Please don’t enter account or card numbers.</p>
+            </section>
+          )}
 
-          {isLast ? (
-            <button className="primary" disabled={submitting} onClick={handleSubmit}>
-              {submitting ? 'Submitting…' : 'Submit'}
-            </button>
-          ) : (
-            <button className="primary" onClick={() => setStep(safeStep + 1)}>
-              Next →
-            </button>
+          {onForm && (
+            <section className="step" key={safeStep}>
+              <h2 className="step__title">{section.title}</h2>
+              {visibleQuestions.map((q) => (
+                <Question
+                  key={q.id}
+                  q={q}
+                  value={responses[q.id]}
+                  otherValue={others[q.id]}
+                  onChange={(val) => setAnswer(q.id, val)}
+                  onOther={(val) => setOther(q.id, val)}
+                  likertAnchors={survey.likertAnchors}
+                />
+              ))}
+              {status === 'error' && <p className="error">⚠ {errorMsg}</p>}
+              <div className="actions">
+                <button
+                  className="btn btn--ghost"
+                  disabled={safeStep === 0 || status === 'submitting'}
+                  onClick={() => go(safeStep - 1)}
+                >
+                  <ArrowL /> Back
+                </button>
+                {isLast ? (
+                  <button className="btn btn--primary" disabled={status === 'submitting'} onClick={handleSubmit}>
+                    {status === 'submitting' ? 'Submitting…' : 'Submit'} <ArrowR />
+                  </button>
+                ) : (
+                  <button className="btn btn--primary" onClick={() => go(safeStep + 1)}>
+                    Continue <ArrowR />
+                  </button>
+                )}
+              </div>
+              <p className="fineprint">You can skip any question.</p>
+            </section>
+          )}
+
+          {status === 'done' && (
+            <section className="done step" key="done">
+              <SuccessCheck />
+              <h2 className="done__title">All done — thank you!</h2>
+              <p className="done__text">
+                Your response was saved anonymously. This genuinely helps shape a better, calmer money app.
+              </p>
+            </section>
           )}
         </div>
-      </div>
-
-      <p className="tiny center">You can skip any question. Please don’t enter account or card numbers.</p>
-    </Shell>
+      </main>
+    </div>
   )
 }
 
-function Shell({ children }) {
+/* ---- inline icons ---- */
+function ArrowR() {
   return (
-    <div className="page">
-      <main className="wrap">{children}</main>
-    </div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  )
+}
+function ArrowL() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 12H5M11 6l-6 6 6 6" />
+    </svg>
+  )
+}
+function SuccessCheck() {
+  return (
+    <svg className="done__check" viewBox="0 0 80 80" aria-hidden="true">
+      <circle cx="40" cy="40" r="34" />
+      <path d="M26 41l10 10 20-22" />
+    </svg>
   )
 }

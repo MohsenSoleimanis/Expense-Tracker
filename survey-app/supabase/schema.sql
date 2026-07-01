@@ -12,13 +12,22 @@ create table if not exists public.survey_responses (
 
 alter table public.survey_responses enable row level security;
 
--- Allow anonymous (public anon key) to insert a response, nothing else.
-drop policy if exists "anon can insert responses" on public.survey_responses;
-create policy "anon can insert responses"
+-- Table-level privilege: anon + logged-in users may INSERT (needed in addition to the
+-- RLS policy below). We do NOT grant SELECT/UPDATE/DELETE, so responses are write-only.
+grant insert on table public.survey_responses to anon, authenticated;
+
+-- RLS policy: allow the insert, from anyone, with no restriction on the row.
+drop policy if exists "anon can insert responses"   on public.survey_responses;
+drop policy if exists "anyone can insert responses" on public.survey_responses;
+create policy "anyone can insert responses"
   on public.survey_responses
   for insert
-  to anon
+  to anon, authenticated
   with check (true);
 
--- NOTE: we intentionally create NO select/update/delete policy for anon,
--- so responses are write-only from the browser and private by default.
+-- NOTE: no select/update/delete policy exists for anon, so responses are private by
+-- default (write-only from the browser).
+
+-- Tell PostgREST to reload its schema cache (important when running this via the API
+-- rather than the dashboard SQL editor, which reloads automatically).
+notify pgrst, 'reload schema';
